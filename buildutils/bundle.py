@@ -32,9 +32,12 @@ pjoin = os.path.join
 # Constants
 #-----------------------------------------------------------------------------
 
-bundled_version = (4,0,5)
-libzmq = "zeromq-%i.%i.%i.tar.gz" % (bundled_version)
-libzmq_url = "http://download.zeromq.org/" + libzmq
+#bundled_version = (4,0,5)
+#libzmq = "zeromq-%i.%i.%i.tar.gz" % (bundled_version)
+#libzmq_url = "http://download.zeromq.org/" + libzmq
+bundled_version = (4,5,6)
+libzmq = "1a5ced9f474edbb33c39a65fdb62c0a1e87e32ca.tar.gz"
+libzmq_url = "https://github.com/zeromq/libzmq/archive/" + libzmq
 
 libsodium_version = (1,0,0)
 libsodium = "libsodium-%i.%i.%i.tar.gz" % (libsodium_version)
@@ -121,11 +124,11 @@ def fetch_libzmq(savedir):
 
 def stage_platform_hpp(zmqroot):
     """stage platform.hpp into libzmq sources
-    
+
     Tries ./configure first (except on Windows),
     then falls back on included platform.hpp previously generated.
     """
-    
+
     platform_hpp = pjoin(zmqroot, 'src', 'platform.hpp')
     if os.path.exists(platform_hpp):
         info("already have platform.hpp")
@@ -135,12 +138,25 @@ def stage_platform_hpp(zmqroot):
         platform_dir = pjoin(zmqroot, 'builds', 'msvc')
     else:
         info("attempting ./configure to generate platform.hpp")
-        
-        p = Popen('./configure', cwd=zmqroot, shell=True,
+
+        failed = False
+
+        p = Popen('./autogen.sh', cwd=zmqroot, shell=True,
             stdout=PIPE, stderr=PIPE,
         )
         o,e = p.communicate()
-        if p.returncode:
+
+        if p.returncode == 0:
+            p = Popen('./configure', cwd=zmqroot, shell=True,
+                stdout=PIPE, stderr=PIPE,
+            )
+            o,e = p.communicate()
+            if p.returncode:
+                failed = True
+        else:
+            failed = True
+
+        if failed:
             warn("failed to configure libzmq:\n%s" % e)
             if sys.platform == 'darwin':
                 platform_dir = pjoin(HERE, 'include_darwin')
@@ -152,14 +168,14 @@ def stage_platform_hpp(zmqroot):
                 platform_dir = pjoin(HERE, 'include_linux')
         else:
             return
-    
+
     info("staging platform.hpp from: %s" % platform_dir)
     shutil.copy(pjoin(platform_dir, 'platform.hpp'), platform_hpp)
 
 
 def copy_and_patch_libzmq(ZMQ, libzmq):
     """copy libzmq into source dir, and patch it if necessary.
-    
+
     This command is necessary prior to running a bdist on Linux or OS X.
     """
     if sys.platform.startswith('win'):
@@ -179,7 +195,7 @@ def copy_and_patch_libzmq(ZMQ, libzmq):
             fatal("Could not copy libzmq into zmq/, which is necessary for bdist. "
             "Please specify zmq prefix via `setup.py configure --zmq=/path/to/zmq` "
             "or copy libzmq into zmq/ manually.")
-    
+
     if sys.platform == 'darwin':
         # chmod u+w on the lib,
         # which can be user-read-only for some reason
@@ -194,4 +210,4 @@ def copy_and_patch_libzmq(ZMQ, libzmq):
         out,err = p.communicate()
         if p.returncode:
             fatal("Could not patch bundled libzmq install_name: %s"%err, p.returncode)
-        
+
